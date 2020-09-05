@@ -34,7 +34,7 @@ ls(char *path)
     fprintf(2, "ls: cannot open %s\n", path);
     return;
   }
-
+  //通过fstat函数文件描述符获取文件信息
   if(fstat(fd, &st) < 0){
     fprintf(2, "ls: cannot stat %s\n", path);
     close(fd);
@@ -59,6 +59,7 @@ ls(char *path)
         continue;
       memmove(p, de.name, DIRSIZ);
       p[DIRSIZ] = 0;
+      //通过stat函数文件名获取文件信息
       if(stat(buf, &st) < 0){
         printf("ls: cannot stat %s\n", buf);
         continue;
