@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "fs.h": "c",
+        "defs.h": "c",
+        "spinlock.h": "c"
+    },
+    "makefile.configureOnOpen": false
+}

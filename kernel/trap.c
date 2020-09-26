@@ -79,7 +79,16 @@ usertrap(void)
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
     yield();
-
+  if(which_dev == 2) {
+    if(p->alarmticks != 0 && ++p->passedticks == p->alarmticks){
+      // p->passedticks = 0;
+      p->trapframecopy = p->trapframe + 512;
+      memmove(p->trapframecopy, p->trapframe, sizeof(struct trapframe));
+      // if(walkaddr(p->pagetable, (uint64)p->trapframe) == 0)
+      //   panic("usertrap(): trapframecopy is not mapped");
+      p->trapframe->epc = (uint64)p->handler;
+    }
+  }
   usertrapret();
 }
 

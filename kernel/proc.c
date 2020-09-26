@@ -112,7 +112,7 @@ found:
     release(&p->lock);
     return 0;
   }
-
+  p->trapframecopy = 0;
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -127,6 +127,10 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // 初始化alarm 相关参数
+  p->alarmticks = 0;
+  p->handler = 0;
+  p->passedticks = 0;
   return p;
 }
 
@@ -150,6 +154,10 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->alarmticks = 0;
+  p->handler = 0;
+  p->passedticks = 0;
+
 }
 
 // Create a user page table for a given process,
