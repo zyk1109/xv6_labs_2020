@@ -15,19 +15,19 @@ extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
 struct run {
-  struct run *next;
+  struct run *next; // 将内存分为一块一块的，直到没有内存为止
 };
 
 struct {
   struct spinlock lock;
-  struct run *freelist;
+  struct run *freelist; // 指向可用（空）内存的链表
 } kmem;
 
 void
 kinit()
 {
-  initlock(&kmem.lock, "kmem");
-  freerange(end, (void*)PHYSTOP);
+  initlock(&kmem.lock, "kmem");  // 初始化spinlock
+  freerange(end, (void*)PHYSTOP); 
 }
 
 void
@@ -68,15 +68,32 @@ kfree(void *pa)
 void *
 kalloc(void)
 {
-  struct run *r;
 
+  struct run *r;
+  // 使用锁 (kmem.lock) 来确保对空闲内存列表的访问是线程安全的
+  // 获取锁 (acquire(&kmem.lock))，以保证对 kmem.freelist 的独占访问
   acquire(&kmem.lock);
   r = kmem.freelist;
   if(r)
     kmem.freelist = r->next;
+  // 释放锁 (release(&kmem.lock))，以允许其他线程访问 kmem.freelist
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+uint64
+get_frame() {
+  uint64 ret = 0;
+  acquire(&kmem.lock);
+  struct run *pagelist = kmem.freelist;
+  while (pagelist)
+  {
+    pagelist = pagelist->next;
+    ret++;
+  }
+  release(&kmem.lock);
+  return ret * PGSIZE;
 }
