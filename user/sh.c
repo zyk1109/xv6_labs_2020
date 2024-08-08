@@ -66,7 +66,7 @@ runcmd(struct cmd *cmd)
 
   if(cmd == 0)
     exit(1);
-
+  printf("runcmd: %d\n", cmd->type);
   switch(cmd->type){
   default:
     panic("runcmd");
@@ -146,7 +146,6 @@ main(void)
 {
   static char buf[100];
   int fd;
-
   // Ensure that three file descriptors are open.
   while((fd = open("console", O_RDWR)) >= 0){
     if(fd >= 3){
@@ -182,7 +181,6 @@ int
 fork1(void)
 {
   int pid;
-
   pid = fork();
   if(pid == -1)
     panic("fork");
@@ -329,15 +327,19 @@ parsecmd(char *s)
 {
   char *es;
   struct cmd *cmd;
-
+  printf("parsecmd: %s\n", s);
   es = s + strlen(s);
   cmd = parseline(&s, es);
+  printf("parsecmd: %s\n", s);
   peek(&s, es, "");
+  
   if(s != es){
     fprintf(2, "leftovers: %s\n", s);
     panic("syntax");
   }
+  
   nulterminate(cmd);
+  
   return cmd;
 }
 
@@ -347,10 +349,12 @@ parseline(char **ps, char *es)
   struct cmd *cmd;
 
   cmd = parsepipe(ps, es);
+  printf("parseline: %d\n", cmd->type);
   while(peek(ps, es, "&")){
     gettoken(ps, es, 0, 0);
     cmd = backcmd(cmd);
   }
+  
   if(peek(ps, es, ";")){
     gettoken(ps, es, 0, 0);
     cmd = listcmd(cmd, parseline(ps, es));
@@ -362,12 +366,14 @@ struct cmd*
 parsepipe(char **ps, char *es)
 {
   struct cmd *cmd;
-
+  printf("parsepipe cmd\n");
   cmd = parseexec(ps, es);
+  printf("parsepipe cmd\n");
   if(peek(ps, es, "|")){
     gettoken(ps, es, 0, 0);
     cmd = pipecmd(cmd, parsepipe(ps, es));
   }
+  
   return cmd;
 }
 
@@ -425,7 +431,7 @@ parseexec(char **ps, char *es)
 
   ret = execcmd();
   cmd = (struct execcmd*)ret;
-
+  printf("parseexec\n");
   argc = 0;
   ret = parseredirs(ret, ps, es);
   while(!peek(ps, es, "|)&;")){

@@ -120,6 +120,23 @@ found:
     release(&p->lock);
     return 0;
   }
+  // Add Content
+  // An empty kernel user page table
+  p->kpt = proc_kvminit();
+  if(p->kpt == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  // Allocate a page for the process's kernel stack.
+  char *pa = kalloc();
+  if(pa == 0){
+    panic("kalloc");
+  } 
+  uint64 va = KSTACK((int) (p - proc));
+  ukvmmap(p->kpt, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  p->kstack = va;
+  
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -142,6 +159,13 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+  if(p->kstack) {
+    uvmunmap(p->kpt, p->kstack, 1, 1);
+  }
+  p->kstack = 0;
+  if(p->kpt)
+    proc_freewalk(p->kpt);
+  p->kpt = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -220,7 +244,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
-
+  u2kvmcopy(p->pagetable, p->kpt, 0, p->sz);
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
@@ -243,9 +267,12 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    printf("growproc: n = %d\n", n);
+    if(PGROUNDUP(sz + n) >= PLIC) return -1;
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    u2kvmcopy(p->pagetable, p->kpt, sz - n, sz);
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
@@ -289,14 +316,15 @@ fork(void)
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
-  safestrcpy(np->name, p->name, sizeof(p->name));
+  // 添加代码
+  u2kvmcopy(np->pagetable, np->kpt, 0, np->sz);
 
+  safestrcpy(np->name, p->name, sizeof(p->name));
   pid = np->pid;
 
   np->state = RUNNABLE;
 
   release(&np->lock);
-
   return pid;
 }
 
@@ -473,13 +501,18 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        // 加载进程的内核页表到核心的satp寄存器
+        proc_kvminithart(p->kpt);        
         swtch(&c->context, &p->context);
 
+        // 没有进程运行时scheduler()应当使用kernel_pagetable
+        kvminithart();
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
 
         found = 1;
+
       }
       release(&p->lock);
     }
