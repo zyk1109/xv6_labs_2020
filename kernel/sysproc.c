@@ -113,7 +113,7 @@ sys_sigalarm(void){
 uint64 
 sys_sigreturn(void){
   struct proc *p = myproc();
-  if(p->trapframecopy != p->trapframe + 512) {
+  if(p->trapframecopy != p->trapframe + 1) {
     printf("sigreturn: trapframe not copied\n");
     return -1;
   }
