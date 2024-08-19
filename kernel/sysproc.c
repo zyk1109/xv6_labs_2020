@@ -43,14 +43,24 @@ sys_sbrk(void)
 {
   int addr;
   int n;
-
+  struct proc *p;
+  int sz;
   if(argint(0, &n) < 0)
     return -1;
   // addr = myproc()->sz;
   // if(growproc(n) < 0)
   //   return -1;
-  myproc()->sz += n;
-  addr = myproc()->sz;
+  p = myproc();
+  addr = p->sz;
+  if(n > 0) {
+    p->sz += n;
+  } else if(p->sz + n > 0) {
+    /** 堆空间负增长 */
+    sz = uvmdealloc(p->pagetable, addr, p->sz + n);
+    p->sz = sz;
+  } else {
+    return -1;
+  }
   return addr;
 }
 

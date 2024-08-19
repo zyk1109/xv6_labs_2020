@@ -67,6 +67,9 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 13 || r_scause() == 15){
+    // page fault
+    alloc_memory_page(p); // alloc memory for new process
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -218,3 +221,27 @@ devintr()
   }
 }
 
+void
+alloc_memory_page(struct proc * const p) {
+  // get the faulting address
+  uint64 va = r_stval();
+  if(p->sz <= va) {
+    printf("alloc_memory_page: faulting address %p beyond process size %d\n", va, p->sz);
+    p->killed = 1;
+    exit(-1);
+  } 
+  char* mem = kalloc();
+  if(mem == 0) {
+    printf("alloc_memory_page: out of memory\n");
+    p->killed = 1;
+    exit(-1);
+  }
+  memset((void*) mem, 0, PGSIZE);  // 为这块地址填充 0
+  va = PGROUNDDOWN(va);
+  if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, PTE_W | PTE_R | PTE_X | PTE_U) < 0) {
+    printf("alloc_memory_page: mappages failed\n");
+    kfree(mem);
+    p->killed = 1;
+    exit(-1);
+  }
+}
