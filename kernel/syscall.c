@@ -72,7 +72,7 @@ argaddr(int n, uint64 *ip)
   struct proc *p = myproc();
   uint64 va = *ip;
   if(walkaddr(p->pagetable, va) == 0) {
-    if(va >= p->sz) return -1;
+    if(va >= p->sz || va<=p->trapframe->sp) return -1;
     char* mem = kalloc();
     if(mem == 0) return -1;
     memset(mem, 0, PGSIZE);

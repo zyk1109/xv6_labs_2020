@@ -225,7 +225,7 @@ void
 alloc_memory_page(struct proc * const p) {
   // get the faulting address
   uint64 va = r_stval();
-  if(p->sz <= va) {
+  if(p->sz <= va || va<=p->trapframe->sp) {
     printf("alloc_memory_page: faulting address %p beyond process size %d\n", va, p->sz);
     p->killed = 1;
     exit(-1);
