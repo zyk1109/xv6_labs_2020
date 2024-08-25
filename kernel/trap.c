@@ -36,6 +36,7 @@ trapinithart(void)
 void
 usertrap(void)
 {
+  struct proc *p = myproc();
   int which_dev = 0;
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
@@ -44,8 +45,6 @@ usertrap(void)
   // send interrupts and exceptions to kerneltrap(),
   // since we're now in the kernel.
   w_stvec((uint64)kernelvec);
-
-  struct proc *p = myproc();
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
@@ -67,6 +66,11 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 13 || r_scause() == 15){
+    uint64 va = r_stval();
+    if(cow_allocate(p->pagetable, va) == 0) {
+      p->killed = 1;
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());

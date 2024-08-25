@@ -2540,6 +2540,7 @@ void
 execout(char *s)
 {
   for(int avail = 0; avail < 15; avail++){
+    printf("execout: avail %d\n", avail);
     int pid = fork();
     if(pid < 0){
       printf("fork failed\n");
@@ -2550,9 +2551,10 @@ execout(char *s)
         uint64 a = (uint64) sbrk(4096);
         if(a == 0xffffffffffffffffLL)
           break;
+        printf("a %p\n", a);
         *(char*)(a + 4096 - 1) = 1;
       }
-
+      printf("allocate all of memory");
       // free a few pages, in order to let exec() make some
       // progress.
       for(int i = 0; i < avail; i++)
