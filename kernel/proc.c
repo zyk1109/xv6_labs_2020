@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -298,6 +299,13 @@ fork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
+  for (int i = 0; i < Max_VMAS; i++) {
+    if (p->vma[i].used) {
+      memmove(&np->vma[i], &p->vma[i], sizeof(p->vma[i]));
+      filedup(p->vma[i].file);
+    }
+  }
+
   pid = np->pid;
 
   np->state = RUNNABLE;
@@ -389,8 +397,19 @@ exit(int status)
   // Parent might be sleeping in wait().
   wakeup1(original_parent);
 
+  for (int i = 0; i < Max_VMAS; i++) {
+    if(p->vma[i].used) {
+      if (p->vma[i].flags == MAP_SHARED && (p->vma[i].prot & PROT_WRITE) != 0)
+        filewrite(p->vma[i].file, p->vma[i].addr, p->vma[i].length);
+      fileclose(p->vma[i].file);
+      uvmunmap(p->pagetable, p->vma[i].addr, p->vma[i].length / PGSIZE, 1);
+      p->vma[i].used = 0;
+    }
+  }
+
   p->xstate = status;
   p->state = ZOMBIE;
+
 
   release(&original_parent->lock);
 

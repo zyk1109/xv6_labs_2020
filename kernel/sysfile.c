@@ -484,3 +484,88 @@ sys_pipe(void)
   }
   return 0;
 }
+
+uint64
+sys_mmap()
+{
+  uint64 addr;
+  int length, prot, flags, fd, offset;
+  uint64 err = 0xffffffffffffffff;
+  struct file *file;
+  struct proc *p = myproc();
+
+  if (argaddr(0, &addr) < 0 || argint(1, &length) || argint(2, &prot) < 0 ||
+      argint(3, &flags) < 0 || argfd(4, &fd, &file) < 0 || argint(5, &offset))
+    return err;
+  // 假设addr和offset始终为零
+  if (addr != 0 || offset != 0 || length < 0)
+    return err;
+  // 文件不可写则不允许拥有PROT_WRITE权限时映射为MAP_SHARED
+  if (file->writable == 0 && (prot & PROT_WRITE) != 0 && flags == MAP_SHARED)
+    return err;
+  // 分配之前先判断进程的地址空间有没有足够大小的虚拟空间
+  if (length + p->sz > MAXVA)
+    return err;
+  for (int i = 0; i < Max_VMAS; i++)
+  {
+    if (p->vma[i].used == 0)
+    {
+      p->vma[i].used = 1;
+      p->vma[i].addr = p->sz;
+      p->vma[i].length = length;
+      p->vma[i].flags = flags;
+      p->vma[i].prot = prot;
+      p->vma[i].fd = fd;
+      p->vma[i].offset = offset;
+      p->vma[i].file = file;
+
+      // 增加文件的引用计数，以便在文件关闭时结构体不会消失
+      filedup(file);
+
+      // 更新当前进程的虚拟地址空间大小
+      p->sz += length;
+      return p->vma[i].addr;
+    }
+  }
+  // 如果没有空余的，就返回错误
+  return err;
+}
+
+uint64
+sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+  if(argaddr(0, &addr) < 0 || argint(1, &length) < 0) 
+    return -1;
+  int i;
+  struct proc *p = myproc();
+  for (i = 0; i < Max_VMAS; i++) {
+    if(p->vma[i].used && p->vma[i].length >= length) {
+      // if (addr == p->vma[i].addr || addr + length == )
+      if (addr == p->vma[i].addr) {
+        p->vma[i].addr += length;
+        p->vma[i].length -= length;
+        break;
+      }
+      if (addr + length == p->vma[i].addr + p->vma[i].length) {
+        p->vma[i].length -= length;
+        break;
+      }
+    } 
+  }
+  if(i == Max_VMAS)
+    return -1;
+  // 写回文件
+  if (p->vma[i].flags == MAP_SHARED && (p->vma[i].prot & PROT_WRITE) != 0) {
+    filewrite(p->vma[i].file, addr, length);
+  }
+  // 取消映射
+  uvmunmap(p->pagetable, addr, length / PGSIZE, 1);
+  // 如果当前已经全部释放,则释放这个VMA，以待下次使用
+  if(p->vma[i].length == 0) {
+    fileclose(p->vma[i].file);
+    p->vma[i].used = 0;
+  }
+  return 0;
+}

@@ -5,7 +5,25 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-
+#include "fcntl.h"
+// #include "file.h" // 包含包含struct file定义的头文件
+struct file
+{
+  enum
+  {
+    FD_NONE,
+    FD_PIPE,
+    FD_INODE,
+    FD_DEVICE
+  } type;
+  int ref; // reference count
+  char readable;
+  char writable;
+  struct pipe *pipe; // FD_PIPE
+  struct inode *ip;  // FD_INODE and FD_DEVICE
+  uint off;          // FD_INODE
+  short major;       // FD_DEVICE
+};
 struct spinlock tickslock;
 uint ticks;
 
@@ -67,6 +85,10 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 13 || r_scause() == 15) {
+    if(mmap_handler(r_stval(), r_scause()) != 0) {
+      p->killed = 1;
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -218,3 +240,52 @@ devintr()
   }
 }
 
+int mmap_handler(int va, int cause)
+{
+  int i;
+  struct proc *p = myproc();
+  for (i = 0; i < Max_VMAS; i++) {
+    if (p->vma[i].used && p->vma[i].addr <= va && va <= p->vma[i].addr + p->vma[i].length - 1) {
+      break;
+    }
+  }
+  if(i == 16)
+    return -1;
+  // 先进行页表项的权限设置和文件可访问性的检查
+  // 设置pte的标志位
+  int pte_flags = PTE_U;
+  if (p->vma[i].prot & PROT_READ)
+    pte_flags |= PTE_R;
+  if (p->vma[i].prot & PROT_WRITE)
+    pte_flags |= PTE_W;
+  if (p->vma[i].prot & PROT_EXEC)
+    pte_flags |= PTE_X;
+  struct file *f = p->vma[i].file;
+  //读导致页面错误
+  if (f->readable == 0 && cause == 13)
+    return -1;
+  //写造成页面错误
+  if(f->writable == 0 && cause == 15)
+    return -1;
+  // 使用 kalloc 分配一个物理页面，并使用 memset 清零
+  void *pa = kalloc();
+  if(pa == 0)
+    return -1;
+  memset(pa, 0, PGSIZE);
+
+  ilock(f->ip);
+  int offset = p->vma[i].offset + PGROUNDDOWN(va - p->vma[i].addr);
+  int readbytes = readi(f->ip, 0, (uint64)pa, offset, PGSIZE);
+  // 什么都没读到
+  if(readbytes == 0) {
+    iunlock(f->ip);
+    kfree(pa);
+    return -1;
+  }
+  iunlock(f->ip);
+  if(mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)pa, pte_flags) != 0) {
+    kfree(pa);
+    return -1;
+  }
+  return 0;
+}
